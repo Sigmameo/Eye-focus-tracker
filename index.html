@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Attention Monitor & Alarm</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- MediaPipe Face Mesh Dependecies -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap');
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+        .font-mono-spaced {
+            font-family: 'Space Grotesk', monospace;
+        }
+        /* Custom Glowing effects */
+        .glow-green {
+            box-shadow: 0 0 20px rgba(34, 197, 94, 0.2);
+        }
+        .glow-red {
+            box-shadow: 0 0 30px rgba(239, 68, 68, 0.4);
+            animation: pulse-red 1.5s infinite;
+        }
+        @keyframes pulse-red {
+            0%, 100% { box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
+            50% { box-shadow: 0 0 40px rgba(239, 68, 68, 0.7); }
+        }
+    </style>
+</head>
+<body class="h-full text-slate-100 flex flex-col overflow-hidden">
+
+    <!-- Top Navigation Bar -->
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur px-6 py-4 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="p-2 bg-indigo-600 rounded-lg text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-lg font-bold tracking-tight">AttentionGuard <span class="text-indigo-400 text-xs font-mono px-2 py-0.5 bg-indigo-950 rounded border border-indigo-800/50">v1.3</span></h1>
+                <p class="text-xs text-slate-400">Classroom Attention Monitor & Real-Time Iris Tracking Gaze System</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <span id="system-status" class="flex items-center gap-2 text-xs bg-slate-800 px-3 py-1.5 rounded-full border border-slate-700">
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" id="status-dot"></span>
+                <span id="status-text" class="text-slate-300">Initializing camera system...</span>
+            </span>
+            <button id="btn-toggle-sound" class="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-200 transition-all border border-transparent hover:border-slate-700" title="Toggle Alarm Sound">
+                <svg id="sound-on-icon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M12 18.75V5.25L7.75 9.5H4.5v5h3.25L12 18.75z" />
+                </svg>
+                <svg id="sound-off-icon" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 flex overflow-hidden min-h-0">
+        <!-- LEFT: Student Camera & Live Feed -->
+        <section class="w-1/2 flex flex-col p-6 border-r border-slate-800 overflow-y-auto">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Student Camera Feed</h2>
+                <div class="flex gap-2">
+                    <button id="btn-calibrate" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold rounded shadow transition-all flex items-center gap-1.5 animate-pulse">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                        </svg>
+                        Calibrate Attention & Gaze
+                    </button>
+                    <button id="btn-camera-toggle" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded border border-slate-700 transition-all">
+                        Pause Tracking
+                    </button>
+                </div>
+            </div>
+
+            <!-- Video/Landmark Container -->
+            <div class="relative flex-1 bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 flex items-center justify-center glow-green" id="feed-container">
+                <video id="webcam" class="absolute w-full h-full object-cover scale-x-[-1]" autoplay playsinline muted></video>
+                <canvas id="landmark-canvas" class="absolute w-full h-full object-cover scale-x-[-1]"></canvas>
+                
+                <!-- Loading State overlay -->
+                <div id="loading-overlay" class="absolute inset-0 bg-slate-900/90 backdrop-blur-sm flex flex-col items-center justify-center gap-4 z-10 transition-opacity duration-500">
+                    <div class="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                    <p class="text-sm font-medium text-slate-300">Loading AI Tracking & Eye Iris Models...</p>
+                    <p class="text-xs text-slate-500">Please grant camera access when prompted.</p>
+                </div>
+
+                <!-- Tracking HUD Overlays -->
+                <div class="absolute inset-x-0 top-0 p-4 bg-gradient-to-b from-slate-950/80 to-transparent flex justify-between items-start pointer-events-none">
+                    <!-- Attention Badge -->
+                    <div id="attention-badge" class="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-3 py-1.5 rounded-lg flex items-center gap-2 backdrop-blur-sm text-sm font-semibold transition-all">
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+                        <span id="badge-text">STUDENT FOCUSED</span>
+                    </div>
+
+                    <!-- Calibration Reminder Indicator -->
+                    <div id="calibration-indicator" class="hidden bg-amber-500/20 border border-amber-500/40 text-amber-300 px-3 py-1.5 rounded-lg backdrop-blur-sm text-xs font-semibold animate-pulse">
+                        ⚠️ Calibration recommended
+                    </div>
+                </div>
+
+                <!-- Timer / Alarm Screen Overlay -->
+                <div id="alarm-overlay" class="absolute inset-0 bg-red-950/40 backdrop-blur-sm hidden flex-col items-center justify-center z-20 pointer-events-none transition-all duration-300 border-4 border-red-500 animate-pulse">
+                    <div class="p-6 bg-red-900/90 border border-red-700 rounded-2xl text-center shadow-2xl max-w-sm pointer-events-auto">
+                        <div class="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce">
+                            <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-1">INATTENTION DETECTED</h3>
+                        <p class="text-xs text-red-200 mb-4">The student looked away from screen boundaries for >6 seconds.</p>
+                        <button id="btn-dismiss-alarm" class="w-full py-2 bg-white hover:bg-slate-100 text-red-900 font-bold text-sm rounded-lg shadow-lg transition-all">
+                            Mute Alarm
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Countdown Timer & Stats -->
+            <div class="mt-4 grid grid-cols-3 gap-4">
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center text-center">
+                    <span class="text-xs text-slate-400 font-medium uppercase mb-1">Attention Counter</span>
+                    <span id="countdown-timer" class="text-3xl font-bold font-mono-spaced text-emerald-400">6.0s</span>
+                    <span class="text-[10px] text-slate-500 mt-1">Countdown to alarm</span>
+                </div>
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center text-center">
+                    <span class="text-xs text-slate-400 font-medium uppercase mb-1">Head Orientation</span>
+                    <div class="flex items-center gap-1.5">
+                        <span id="stat-yaw" class="text-sm font-semibold font-mono-spaced text-slate-300">0.0°</span>
+                        <span class="text-xs text-slate-500">|</span>
+                        <span id="stat-pitch" class="text-sm font-semibold font-mono-spaced text-slate-300">0.0°</span>
+                    </div>
+                    <span class="text-[10px] text-slate-500 mt-1">Yaw / Pitch drift</span>
+                </div>
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center text-center">
+                    <span class="text-xs text-slate-400 font-medium uppercase mb-1">Pupil / Gaze Gaze</span>
+                    <div class="flex items-center gap-1.5">
+                        <span id="stat-gaze-x" class="text-sm font-semibold font-mono-spaced text-emerald-400">0.00</span>
+                        <span class="text-xs text-slate-500">|</span>
+                        <span id="stat-gaze-y" class="text-sm font-semibold font-mono-spaced text-emerald-400">0.00</span>
+                    </div>
+                    <span id="stat-eyes" class="text-[10px] text-slate-400 mt-1">Eyes Open (Centered)</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- RIGHT: Teacher Dashboard, Controls & Logs -->
+        <section class="w-1/2 flex flex-col p-6 bg-slate-900/40 overflow-y-auto">
+            <!-- Section Header -->
+            <div class="flex items-center justify-between mb-6 pb-4 border-b border-slate-800">
+                <div>
+                    <h2 class="text-base font-bold text-slate-100">Teacher Dashboard Control Console</h2>
+                    <p class="text-xs text-slate-400">Manage surveillance parameters and track pupil-tracking metrics.</p>
+                </div>
+                <span class="text-xs bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 px-2.5 py-1 rounded-full font-semibold">Active Monitoring Panel</span>
+            </div>
+
+            <!-- Monitoring Settings Grid -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-6">
+                <h3 class="text-sm font-bold text-slate-200 mb-4 flex items-center gap-2">
+                    <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                    </svg>
+                    Detector Sensitivity & Rules configuration
+                </h3>
+                <div class="grid grid-cols-2 gap-6">
+                    <!-- Left Config Column -->
+                    <div class="space-y-4">
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <label class="text-xs text-slate-400 font-semibold">Inattention Window (Seconds)</label>
+                                <span id="val-delay" class="text-xs text-indigo-400 font-mono">6s</span>
+                            </div>
+                            <input type="range" id="param-delay" min="3" max="30" value="6" step="1" class="w-full accent-indigo-500 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+                        </div>
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <label class="text-xs text-slate-400 font-semibold">Pupil Gaze Limit (Deviation)</label>
+                                <span id="val-gaze-limit" class="text-xs text-indigo-400 font-mono">0.08</span>
+                            </div>
+                            <input type="range" id="param-gaze-limit" min="0.03" max="0.20" value="0.08" step="0.01" class="w-full accent-indigo-500 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+                        </div>
+                    </div>
+                    <!-- Right Config Column -->
+                    <div class="space-y-4">
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <label class="text-xs text-slate-400 font-semibold">Head Rotation Yaw Limit</label>
+                                <span id="val-yaw" class="text-xs text-indigo-400 font-mono">15°</span>
+                            </div>
+                            <input type="range" id="param-yaw" min="5" max="45" value="15" step="1" class="w-full accent-indigo-500 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+                        </div>
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <label class="text-xs text-slate-400 font-semibold">Head Rotation Pitch Limit</label>
+                                <span id="val-pitch" class="text-xs text-indigo-400 font-mono">12°</span>
+                            </div>
+                            <input type="range" id="param-pitch" min="5" max="35" value="12" step="1" class="w-full accent-indigo-500 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4 pt-4 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-400">
+                    <span>Calibration benchmarks screen boundaries to filter natural visual scanning.</span>
+                    <button id="btn-reset-params" class="text-indigo-400 hover:text-indigo-300 font-semibold">Reset Defaults</button>
+                </div>
+            </div>
+
+            <!-- Historical Infraction Log Feed -->
+        <div class="flex-1 min-h-0 flex flex-col bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+                    <h3 class="text-sm font-bold text-slate-200">Incident & Notification Log</h3>
+                </div>
+                <button id="btn-clear-logs" class="text-xs text-slate-500 hover:text-slate-300 transition-colors">Clear history</button>
+            </div>
+            
+            <!-- Infinite Scroll Log Feed -->
+            <div id="log-container" class="flex-1 overflow-y-auto space-y-2.5 pr-2">
+                <!-- Default State empty -->
+                <div id="no-incidents-msg" class="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500">
+                    <svg class="w-12 h-12 mb-3 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p class="text-xs font-semibold">Perfect Attention Stream</p>
+                    <p class="text-[11px] text-slate-600 mt-1">No looking-away violations or classroom alarms logged.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<!-- Modal Dialogs for Calibration & Alerts -->
+<div id="calibration-modal" class="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md hidden flex flex-col justify-between p-8">
+    <!-- Top Instructions Card -->
+    <div class="max-w-md mx-auto bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-2xl text-center">
+        <h3 class="text-lg font-bold text-slate-100 mb-2">Dual Face & Gaze Calibration</h3>
+        <p class="text-xs text-slate-400 leading-relaxed">
+            Sit comfortably, align your head, and <span class="text-indigo-400 font-semibold">look directly at the glowing center "X" target</span>. The system will register this as your baseline gaze position.
+        </p>
+    </div>
+
+    <!-- Absolute Center Target (The Calibration X Reticle) -->
+    <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div class="relative flex items-center justify-center">
+            <!-- Rotating outer guide rings -->
+            <div class="absolute w-32 h-32 border border-dashed border-indigo-500/40 rounded-full animate-spin [animation-duration:8s]"></div>
+            <div class="absolute w-20 h-20 border border-indigo-500/30 rounded-full"></div>
+            <!-- Pulsing outer wave -->
+            <div class="absolute w-16 h-16 border border-indigo-400 rounded-full animate-ping opacity-75"></div>
+            
+            <!-- Target 'X' -->
+            <div class="text-indigo-400 text-5xl font-extrabold select-none leading-none z-10 font-mono tracking-wider animate-pulse">X</div>
+            
+            <!-- Countdown display floating below the central target -->
+            <div class="absolute -bottom-20 flex flex-col items-center">
+                <span class="text-[9px] text-slate-500 uppercase tracking-widest font-bold mb-1">Calibration Timer</span>
+                <div id="calibration-countdown-text" class="text-3xl font-bold font-mono-spaced text-indigo-400 bg-slate-900 border border-slate-800 px-5 py-1 rounded-full shadow-lg">3</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Actions Bar -->
+    <div class="max-w-md mx-auto w-full flex gap-3 justify-center z-10">
+        <button id="btn-cancel-calibration" class="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs rounded-lg transition-colors border border-slate-700">Cancel</button>
+        <button id="btn-start-calibration-countdown" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-lg shadow-lg shadow-indigo-600/20 transition-colors">Align & Calibrate</button>
+    </div>
+</div>
+
+<!-- Script Application Logic -->
+<script>
+        // Web Audio Context setup
+        let audioCtx = null;
+        let alarmIntervalId = null;
+        let isSoundEnabled = true;
+
+        // Configuration State
+        const config = {
+            alarmDelaySec: 6,
+            thresholdYaw: 15,
+            thresholdPitch: 12,
+            minEyeRatio: 0.17,
+            thresholdGaze: 0.08,
+            appId: typeof __app_id !== 'undefined' ? __app_id : 'student-attention-monitor'
+        };
+
+        // Calibration Baseline values (offsets to handle offset webcam positions)
+        const calibration = {
+            isCalibrated: false,
+            baselineYaw: 0,
+            baselinePitch: 0,
+            baselineGazeX: 0,
+            baselineGazeY: 0
+        };
+
+        // Monitoring State Variables
+        let cameraRunning = true;
+        let attentionTimer = null;
+        let timeRemaining = config.alarmDelaySec;
+        let isLookingAway = false;
+        let alarmActive = false;
+        let lastInattentionStartTime = null;
+        let trackingModelReady = false;
+
+        // DOM elements
+        const webcamElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('landmark-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const timerText = document.getElementById('countdown-timer');
+        const overlayAlarm = document.getElementById('alarm-overlay');
+        const badgeAttention = document.getElementById('attention-badge');
+        const badgeText = document.getElementById('badge-text');
+        const indicatorCalibration = document.getElementById('calibration-indicator');
+        const textSystemStatus = document.getElementById('status-text');
+        const dotStatus = document.getElementById('status-dot');
+        const btnToggleSound = document.getElementById('btn-toggle-sound');
+        const soundOnIcon = document.getElementById('sound-on-icon');
+        const soundOffIcon = document.getElementById('sound-off-icon');
+
+        // Stats Display elements
+        const statYaw = document.getElementById('stat-yaw');
+        const statPitch = document.getElementById('stat-pitch');
+        const statGazeX = document.getElementById('stat-gaze-x');
+        const statGazeY = document.getElementById('stat-gaze-y');
+        const statEyes = document.getElementById('stat-eyes');
+
+        // Parameter Sliders
+        const paramDelay = document.getElementById('param-delay');
+        const valDelay = document.getElementById('val-delay');
+        const paramYaw = document.getElementById('param-yaw');
+        const valYaw = document.getElementById('val-yaw');
+        const paramPitch = document.getElementById('param-pitch');
+        const valPitch = document.getElementById('val-pitch');
+        const paramGazeLimit = document.getElementById('param-gaze-limit');
+        const valGazeLimit = document.getElementById('val-gaze-limit');
+
+        // Logs
+        const logContainer = document.getElementById('log-container');
+        const noIncidentsMsg = document.getElementById('no-incidents-msg');
+
+        // Calibration Modal Dialog Elements
+        const calibrationModal = document.getElementById('calibration-modal');
+        const btnCalibrate = document.getElementById('btn-calibrate');
+        const btnCancelCalibrate = document.getElementById('btn-cancel-calibration');
+        const btnStartCalibrate = document.getElementById('btn-start-calibration-countdown');
+        const textCalibrateCountdown = document.getElementById('calibration-countdown-text');
+
+        // Initialize Slider Events
+        paramDelay.addEventListener('input', (e) => {
+            config.alarmDelaySec = parseInt(e.target.value);
+            valDelay.innerText = `${config.alarmDelaySec}s`;
+            if (!isLookingAway) resetCountdown();
+        });
+        paramYaw.addEventListener('input', (e) => {
+            config.thresholdYaw = parseInt(e.target.value);
+            valYaw.innerText = `${config.thresholdYaw}°`;
+        });
+        paramPitch.addEventListener('input', (e) => {
+            config.thresholdPitch = parseInt(e.target.value);
+            valPitch.innerText = `${config.thresholdPitch}°`;
+        });
+        paramGazeLimit.addEventListener('input', (e) => {
+            config.thresholdGaze = parseFloat(e.target.value);
+            valGazeLimit.innerText = config.thresholdGaze.toFixed(2);
+        });
+
+        document.getElementById('btn-reset-params').addEventListener('click', () => {
+            paramDelay.value = 6; config.alarmDelaySec = 6; valDelay.innerText = '6s';
+            paramYaw.value = 15; config.thresholdYaw = 15; valYaw.innerText = '15°';
+            paramPitch.value = 12; config.thresholdPitch = 12; valPitch.innerText = '12°';
+            paramGazeLimit.value = 0.08; config.thresholdGaze = 0.08; valGazeLimit.innerText = '0.08';
+            resetCountdown();
+        });
+
+        // Toggle Sound Handler
+        btnToggleSound.addEventListener('click', () => {
+            isSoundEnabled = !isSoundEnabled;
+            if (isSoundEnabled) {
+                soundOnIcon.classList.remove('hidden');
+                soundOffIcon.classList.add('hidden');
+            } else {
+                soundOnIcon.classList.add('hidden');
+                soundOffIcon.classList.remove('hidden');
+                stopAlarmSynth();
+            }
+        });
+
+        // Dismiss alarm manually
+        document.getElementById('btn-dismiss-alarm').addEventListener('click', () => {
+            forceMuteAlarm();
+        });
+
+        // Clear Logs
+        document.getElementById('btn-clear-logs').addEventListener('click', () => {
+            logContainer.innerHTML = '';
+            noIncidentsMsg.classList.remove('hidden');
+            logContainer.appendChild(noIncidentsMsg);
+        });
+
+        // System state helper
+        function updateSystemStatus(text, type = 'working') {
+            textSystemStatus.innerText = text;
+            dotStatus.className = 'w-2.5 h-2.5 rounded-full animate-pulse';
+            if (type === 'working') dotStatus.classList.add('bg-indigo-500');
+            else if (type === 'warning') dotStatus.classList.add('bg-amber-500');
+            else if (type === 'critical') dotStatus.classList.add('bg-red-500');
+            else if (type === 'success') {
+                dotStatus.classList.remove('animate-pulse');
+                dotStatus.classList.add('bg-emerald-500');
+            }
+        }
+
+        // Web Audio Synthesizer Alarm Sound Creator
+        function startAlarmSynth() {
+            if (!isSoundEnabled) return;
+            if (alarmIntervalId) return;
+
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            // Dual tone high frequency annoying pitch sequencer
+            let isToneA = true;
+            alarmIntervalId = setInterval(() => {
+                if (!isSoundEnabled || !audioCtx) return;
+                
+                try {
+                    const osc = audioCtx.createOscillator();
+                    const gainNode = audioCtx.createGain();
+                    
+                    osc.connect(gainNode);
+                    gainNode.connect(audioCtx.destination);
+                    
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(isToneA ? 1050.00 : 850.00, audioCtx.currentTime); 
+                    
+                    gainNode.gain.setValueAtTime(0.25, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+                    
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.4);
+                    isToneA = !isToneA;
+                } catch (e) {
+                    console.error("Synthesizer sound error", e);
+                }
+            }, 450);
+        }
+
+        function stopAlarmSynth() {
+            if (alarmIntervalId) {
+                clearInterval(alarmIntervalId);
+                alarmIntervalId = null;
+            }
+        }
+
+        function playDistractionBeep() {
+            if (!isSoundEnabled) return;
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.frequency.setValueAtTime(520, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.18);
+            } catch (e) {}
+        }
+
+        function resetCountdown() {
+            timeRemaining = config.alarmDelaySec;
+            timerText.innerText = timeRemaining.toFixed(1) + 's';
+            timerText.className = "text-3xl font-bold font-mono-spaced text-emerald-400";
+        }
+
+        function updateAttentionTimer() {
+            if (!isLookingAway) {
+                resetCountdown();
+                return;
+            }
+
+            timeRemaining -= 0.1;
+            if (timeRemaining <= 0) {
+                timeRemaining = 0;
+                triggerAlarm();
+            }
+
+            timerText.innerText = Math.max(0, timeRemaining).toFixed(1) + 's';
+            
+            if (timeRemaining > 5) {
+                timerText.className = "text-3xl font-bold font-mono-spaced text-amber-400 animate-pulse";
+            } else {
+                timerText.className = "text-3xl font-bold font-mono-spaced text-red-500 animate-pulse font-extrabold";
+            }
+        }
+
+        setInterval(updateAttentionTimer, 100);
+
+        function triggerAlarm() {
+            if (alarmActive) return;
+            alarmActive = true;
+            
+            overlayAlarm.classList.remove('hidden');
+            const feedContainer = document.getElementById('feed-container');
+            feedContainer.className = "relative flex-1 bg-slate-900 rounded-2xl overflow-hidden border border-red-500 flex items-center justify-center glow-red";
+
+            startAlarmSynth();
+
+            createLogEntry("CRITICAL ALERT", `Student looked away from screen for longer than ${config.alarmDelaySec} seconds! Sent notice.`, "danger");
+            updateSystemStatus("CLASSROOM ALERT: INATTENTION ALARM ACTIVE", "critical");
+        }
+
+        function forceMuteAlarm() {
+            stopAlarmSynth();
+            overlayAlarm.classList.add('hidden');
+            const feedContainer = document.getElementById('feed-container');
+            feedContainer.className = "relative flex-1 bg-slate-900 rounded-2xl overflow-hidden border border-amber-600 flex items-center justify-center glow-green";
+            updateSystemStatus("Snoozing buzzer. Continued visual tracking active.", "warning");
+        }
+
+        function resolveDistraction() {
+            if (!isLookingAway) return;
+            isLookingAway = false;
+
+            overlayAlarm.classList.add('hidden');
+            stopAlarmSynth();
+
+            const feedContainer = document.getElementById('feed-container');
+            feedContainer.className = "relative flex-1 bg-slate-900 rounded-2xl overflow-hidden border border-emerald-500 flex items-center justify-center glow-green";
+
+            badgeAttention.className = "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-3 py-1.5 rounded-lg flex items-center gap-2 backdrop-blur-sm text-sm font-semibold transition-all";
+            badgeText.innerText = "STUDENT FOCUSED";
+
+            if (alarmActive) {
+                alarmActive = false;
+                const totalDistractionDuration = ((Date.now() - lastInattentionStartTime) / 1000).toFixed(1);
+                createLogEntry("ATTENTION REGAINED", `Student returned attention to monitor screen. Total away time: ${totalDistractionDuration} seconds.`, "success");
+            }
+            
+            resetCountdown();
+            updateSystemStatus("Monitoring live gaze stream...", "success");
+        }
+
+        function triggerDistraction(causeStr = "Looking Away") {
+            if (isLookingAway) return;
+            isLookingAway = true;
+            lastInattentionStartTime = Date.now();
+
+            playDistractionBeep();
+
+            badgeAttention.className = "bg-red-500/10 border border-red-500/20 text-red-400 px-3 py-1.5 rounded-lg flex items-center gap-2 backdrop-blur-sm text-sm font-semibold transition-all";
+            badgeText.innerText = `DISTRACTED: ${causeStr.toUpperCase()}`;
+
+            const feedContainer = document.getElementById('feed-container');
+            feedContainer.className = "relative flex-1 bg-slate-900 rounded-2xl overflow-hidden border border-amber-500 flex items-center justify-center";
+
+            createLogEntry("INATTENTION", `System flagged student looking away. Indicator: ${causeStr}.`, "warning");
+            updateSystemStatus(`Warning: Student is distracted (${causeStr})`, "warning");
+        }
+
+        function createLogEntry(type, text, level) {
+            noIncidentsMsg.classList.add('hidden');
+
+            const timestamp = new Date().toLocaleTimeString();
+            const logCard = document.createElement('div');
+            
+            let colorClasses = "bg-slate-950 border-slate-800 text-slate-300";
+            let tagColor = "bg-slate-800 text-slate-400";
+            
+            if (level === "danger") {
+                colorClasses = "bg-red-950/20 border-red-900/50 text-red-200";
+                tagColor = "bg-red-900/30 text-red-400 border border-red-800/50";
+            } else if (level === "warning") {
+                colorClasses = "bg-amber-950/20 border-amber-900/40 text-amber-200";
+                tagColor = "bg-amber-900/30 text-amber-400 border border-amber-800/40";
+            } else if (level === "success") {
+                colorClasses = "bg-emerald-950/20 border-emerald-900/40 text-emerald-200";
+                tagColor = "bg-emerald-900/30 text-emerald-400 border border-emerald-800/40";
+            }
+
+            logCard.className = `p-3.5 border rounded-xl flex items-start gap-3 transition-all animate-fadeIn ${colorClasses}`;
+            logCard.innerHTML = `
+                <div class="flex-1">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${tagColor}">${type}</span>
+                        <span class="text-[10px] font-mono-spaced text-slate-500">${timestamp}</span>
+                    </div>
+                    <p class="text-xs font-medium leading-relaxed">${text}</p>
+                </div>
+            `;
+            
+            logContainer.insertBefore(logCard, logContainer.firstChild);
+        }
+
+        const btnCameraToggle = document.getElementById('btn-camera-toggle');
+        btnCameraToggle.addEventListener('click', () => {
+            cameraRunning = !cameraRunning;
+            if (cameraRunning) {
+                btnCameraToggle.innerText = "Pause Tracking";
+                btnCameraToggle.className = "px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded border border-slate-700 transition-all";
+                updateSystemStatus("Resuming surveillance pipeline...", "working");
+            } else {
+                btnCameraToggle.innerText = "Resume Tracking";
+                btnCameraToggle.className = "px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold rounded shadow transition-all";
+                updateSystemStatus("Attention monitor paused by user", "warning");
+                resolveDistraction();
+            }
+        });
+
+        btnCalibrate.addEventListener('click', () => {
+            calibrationModal.classList.remove('hidden');
+        });
+
+        btnCancelCalibrate.addEventListener('click', () => {
+            calibrationModal.classList.add('hidden');
+        });
+
+        let countdownInterval;
+        btnStartCalibrate.addEventListener('click', () => {
+            btnStartCalibrate.disabled = true;
+            btnStartCalibrate.innerText = "Calibrating...";
+            
+            let seconds = 3;
+            textCalibrateCountdown.innerText = seconds;
+            
+            countdownInterval = setInterval(() => {
+                seconds--;
+                if (seconds <= 0) {
+                    clearInterval(countdownInterval);
+                    captureBaselinePosture();
+                    
+                    calibrationModal.classList.add('hidden');
+                    btnStartCalibrate.disabled = false;
+                    btnStartCalibrate.innerText = "Align & Calibrate";
+                    
+                    createLogEntry("CALIBRATED", "Baseline eye gaze and head positioning parameters adjusted successfully.", "success");
+                    indicatorCalibration.classList.add('hidden');
+                } else {
+                    textCalibrateCountdown.innerText = seconds;
+                }
+            }, 1000);
+        });
+
+        // Temporary math values
+        let currentYawValue = 0;
+        let currentPitchValue = 0;
+        let currentGazeX = 0;
+        let currentGazeY = 0;
+        let currentLeftEyeOpenness = 1.0;
+        let currentRightEyeOpenness = 1.0;
+
+        function captureBaselinePosture() {
+            calibration.baselineYaw = currentYawValue;
+            calibration.baselinePitch = currentPitchValue;
+            calibration.baselineGazeX = currentGazeX;
+            calibration.baselineGazeY = currentGazeY;
+            calibration.isCalibrated = true;
+        }
+
+        // Process geometry coordinates for pose & eyes iris
+        function processFaceAndGaze(landmarks) {
+            // 1. Calculate Head Yaw & Pitch (using nose tip and temple outlines)
+            const noseTip = landmarks[1];
+            const leftTemple = landmarks[234];
+            const rightTemple = landmarks[454];
+            const foreheadTop = landmarks[10];
+            const chinBottom = landmarks[152];
+
+            const dxLeft = Math.abs(noseTip.x - leftTemple.x);
+            const dxRight = Math.abs(rightTemple.x - noseTip.x);
+            const ratioYaw = dxLeft / (dxRight || 0.001);
+            let yawVal = Math.log(ratioYaw) * 45; 
+
+            const dyForehead = Math.abs(noseTip.y - foreheadTop.y);
+            const dyChin = Math.abs(chinBottom.y - noseTip.y);
+            const ratioPitch = dyForehead / (dyChin || 0.001);
+            let pitchVal = Math.log(ratioPitch) * 35; 
+
+            // 2. Eye Openness calculation (EAR)
+            const leftEyeHeight = Math.hypot(landmarks[159].x - landmarks[145].x, landmarks[159].y - landmarks[145].y);
+            const leftEyeWidth = Math.hypot(landmarks[33].x - landmarks[133].x, landmarks[33].y - landmarks[133].y);
+            const leftEyeRatio = leftEyeHeight / (leftEyeWidth || 0.001);
+
+            const rightEyeHeight = Math.hypot(landmarks[386].x - landmarks[374].x, landmarks[386].y - landmarks[374].y);
+            const rightEyeWidth = Math.hypot(landmarks[362].x - landmarks[263].x, landmarks[362].y - landmarks[263].y);
+            const rightEyeRatio = rightEyeHeight / (rightEyeWidth || 0.001);
+
+            // 3. Iris Pupil tracking calculations (Requires refineLandmarks)
+            // Left Eye: Outer corner 33, Inner corner 133, Pupil Center 468. Top lid 159, Bottom lid 145
+            // Right Eye: Inner corner 362, Outer corner 263, Pupil Center 473. Top lid 386, Bottom lid 374
+            const leftWidth = Math.max(0.001, Math.abs(landmarks[133].x - landmarks[33].x));
+            const leftCenterX = (landmarks[133].x + landmarks[33].x) / 2;
+            const rawGazeXLeft = (landmarks[468].x - leftCenterX) / leftWidth;
+
+            const rightWidth = Math.max(0.001, Math.abs(landmarks[263].x - landmarks[362].x));
+            const rightCenterX = (landmarks[263].x + landmarks[362].x) / 2;
+            const rawGazeXRight = (landmarks[473].x - rightCenterX) / rightWidth;
+
+            // Combine both eyes gaze vectors
+            let rawGazeX = (rawGazeXLeft + rawGazeXRight) / 2;
+
+            // Vertical eye movement
+            const leftHeight = Math.max(0.001, Math.abs(landmarks[145].y - landmarks[159].y));
+            const leftCenterY = (landmarks[145].y + landmarks[159].y) / 2;
+            const rawGazeYLeft = (landmarks[468].y - leftCenterY) / leftHeight;
+
+            const rightHeight = Math.max(0.001, Math.abs(landmarks[374].y - landmarks[386].y));
+            const rightCenterY = (landmarks[374].y + landmarks[386].y) / 2;
+            const rawGazeYRight = (landmarks[473].y - rightCenterY) / rightHeight;
+
+            let rawGazeY = (rawGazeYLeft + rawGazeYRight) / 2;
+
+            // Cache raw calculations for calibration
+            currentYawValue = yawVal;
+            currentPitchValue = pitchVal;
+            currentGazeX = rawGazeX;
+            currentGazeY = rawGazeY;
+
+            // Apply offsets relative to baseline calibration
+            const finalYaw = calibration.isCalibrated ? (yawVal - calibration.baselineYaw) : yawVal;
+            const finalPitch = calibration.isCalibrated ? (pitchVal - calibration.baselinePitch) : pitchVal;
+            const finalGazeX = calibration.isCalibrated ? (rawGazeX - calibration.baselineGazeX) : rawGazeX;
+            const finalGazeY = calibration.isCalibrated ? (rawGazeY - calibration.baselineGazeY) : rawGazeY;
+
+            // Print stats tracking
+            statYaw.innerText = `${finalYaw >= 0 ? '+' : ''}${finalYaw.toFixed(1)}°`;
+            statPitch.innerText = `${finalPitch >= 0 ? '+' : ''}${finalPitch.toFixed(1)}°`;
+            statGazeX.innerText = `${finalGazeX >= 0 ? '+' : ''}${finalGazeX.toFixed(3)}`;
+            statGazeY.innerText = `${finalGazeY >= 0 ? '+' : ''}${finalGazeY.toFixed(3)}`;
+
+            const averageEyeRatio = (leftEyeRatio + rightEyeRatio) / 2;
+            const eyesClosed = averageEyeRatio < config.minEyeRatio;
+
+            // Update Eyes HUD Text
+            if (eyesClosed) {
+                statEyes.innerText = "Eyes Closed / Sleeping";
+                statEyes.className = "text-[10px] text-red-500 font-bold animate-pulse";
+            } else {
+                // If eyes open, write gaze direction vector description
+                let horizontalLabel = Math.abs(finalGazeX) > config.thresholdGaze ? (finalGazeX > 0 ? "Looking Right" : "Looking Left") : "";
+                let verticalLabel = Math.abs(finalGazeY) > config.thresholdGaze ? (finalGazeY > 0 ? "Looking Down" : "Looking Up") : "";
+                
+                if (horizontalLabel || verticalLabel) {
+                    statEyes.innerText = `${horizontalLabel} ${verticalLabel}`.trim();
+                    statEyes.className = "text-[10px] text-amber-400 font-medium";
+                } else {
+                    statEyes.innerText = "Eyes Open (Centered)";
+                    statEyes.className = "text-[10px] text-emerald-400 font-medium";
+                }
+            }
+
+            // Distraction flags assessment
+            const headLostYaw = Math.abs(finalYaw) > config.thresholdYaw;
+            const headLostPitch = Math.abs(finalPitch) > config.thresholdPitch;
+            const eyeGazeShifted = Math.abs(finalGazeX) > config.thresholdGaze || Math.abs(finalGazeY) > config.thresholdGaze;
+
+            if (!cameraRunning) return;
+
+            if (eyesClosed) {
+                triggerDistraction("Eyes Closed");
+            } else if (eyeGazeShifted && !headLostYaw && !headLostPitch) {
+                // Catches pupils scanning away without shifting the neck
+                const directionX = finalGazeX > 0 ? "Right" : "Left";
+                const directionY = finalGazeY > 0 ? "Down" : "Up";
+                const eyeAwayText = Math.abs(finalGazeX) > config.thresholdGaze ? `Eyes Looking ${directionX}` : `Eyes Looking ${directionY}`;
+                triggerDistraction(`${eyeAwayText} (Gaze Shift)`);
+            } else if (headLostYaw) {
+                triggerDistraction(finalYaw > 0 ? "Head Turned Right" : "Head Turned Left");
+            } else if (headLostPitch) {
+                triggerDistraction(finalPitch > 0 ? "Head Bent Down" : "Head Lifted Up");
+            } else {
+                resolveDistraction();
+            }
+        }
+
+        // Initialize MediaPipe Face Mesh module
+        const faceMesh = new FaceMesh({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+        });
+
+        faceMesh.setOptions({
+            maxNumFaces: 1,
+            refineLandmarks: true, // IMPORTANT: Unlocks pupil (iris center) indexing landmarks 468-477
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        faceMesh.onResults(onMeshResults);
+
+        function onMeshResults(results) {
+            canvasElement.width = webcamElement.videoWidth;
+            canvasElement.height = webcamElement.videoHeight;
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            if (!trackingModelReady) {
+                trackingModelReady = true;
+                document.getElementById('loading-overlay').classList.add('opacity-0', 'pointer-events-none');
+                updateSystemStatus("Iris & Attention monitoring active.", "success");
+                indicatorCalibration.classList.remove('hidden');
+            }
+
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                const faceLandmarks = results.multiFaceLandmarks[0];
+                processFaceAndGaze(faceLandmarks);
+                drawFacialWireframe(faceLandmarks);
+            } else {
+                if (cameraRunning) {
+                    triggerDistraction("Face Out of Frame");
+                    statYaw.innerText = "N/A";
+                    statPitch.innerText = "N/A";
+                    statGazeX.innerText = "N/A";
+                    statGazeY.innerText = "N/A";
+                    statEyes.innerText = "Absent";
+                    statEyes.className = "text-sm font-semibold text-red-500";
+                }
+            }
+        }
+
+        // Wireframe Drawer (highlights iris tracking)
+        function drawFacialWireframe(landmarks) {
+            const hasRefinedPoints = landmarks.length > 468;
+            canvasCtx.strokeStyle = isLookingAway ? 'rgba(239, 68, 68, 0.4)' : 'rgba(34, 197, 94, 0.4)';
+            canvasCtx.lineWidth = 1;
+
+            // Eye outline paths indexes
+            const leftEyeIndex = [33, 160, 158, 133, 153, 144];
+            const rightEyeIndex = [362, 385, 387, 263, 373, 380];
+            const lipsIndex = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324];
+
+            drawFeaturePath(landmarks, leftEyeIndex, true);
+            drawFeaturePath(landmarks, rightEyeIndex, true);
+            drawFeaturePath(landmarks, lipsIndex, true);
+
+            // Render nose crosshair pointers
+            const noseLine = [1, 4, 195, 197, 6];
+            drawFeaturePath(landmarks, noseLine, false);
+
+            // DRAW PUPILLARY TARGETS IF AVAILABLE
+            if (hasRefinedPoints) {
+                // Highlight pupil centers
+                const pupilLeft = landmarks[468];
+                const pupilRight = landmarks[473];
+                const trackerColor = isLookingAway ? '#f87171' : '#60a5fa'; // Red vs Blue pupil lock tracker
+
+                // Draw Left Iris target rings
+                canvasCtx.strokeStyle = trackerColor;
+                canvasCtx.lineWidth = 1.5;
+                canvasCtx.beginPath();
+                canvasCtx.arc(pupilLeft.x * canvasElement.width, pupilLeft.y * canvasElement.height, 6, 0, 2 * Math.PI);
+                canvasCtx.stroke();
+
+                // Draw Right Iris target rings
+                canvasCtx.beginPath();
+                canvasCtx.arc(pupilRight.x * canvasElement.width, pupilRight.y * canvasElement.height, 6, 0, 2 * Math.PI);
+                canvasCtx.stroke();
+
+                // Draw solid inner pupil core points
+                canvasCtx.fillStyle = isLookingAway ? '#ef4444' : '#10b981';
+                canvasCtx.beginPath();
+                canvasCtx.arc(pupilLeft.x * canvasElement.width, pupilLeft.y * canvasElement.height, 2, 0, 2 * Math.PI);
+                canvasCtx.arc(pupilRight.x * canvasElement.width, pupilRight.y * canvasElement.height, 2, 0, 2 * Math.PI);
+                canvasCtx.fill();
+            }
+
+            // Draw bounding box center reticle on nose tip
+            const nose = landmarks[1];
+            canvasCtx.fillStyle = isLookingAway ? '#ef4444' : '#10b981';
+            canvasCtx.beginPath();
+            canvasCtx.arc(nose.x * canvasElement.width, nose.y * canvasElement.height, 4, 0, 2 * Math.PI);
+            canvasCtx.fill();
+        }
+
+        function drawFeaturePath(landmarks, indices, closePath) {
+            canvasCtx.beginPath();
+            indices.forEach((index, i) => {
+                const point = landmarks[index];
+                const x = point.x * canvasElement.width;
+                const y = point.y * canvasElement.height;
+                if (i === 0) canvasCtx.moveTo(x, y);
+                else canvasCtx.lineTo(x, y);
+            });
+            if (closePath) canvasCtx.closePath();
+            canvasCtx.stroke();
+        }
+
+        // Initialize camera capturing stream pipelines
+        const camera = new Camera(webcamElement, {
+            onFrame: async () => {
+                if (cameraRunning) {
+                    await faceMesh.send({ image: webcamElement });
+                }
+            },
+            width: 640,
+            height: 480
+        });
+
+        // Safe start camera pipeline on page execution loader
+        window.onload = function() {
+            camera.start()
+                .then(() => {
+                    updateSystemStatus("Webcam initialized. Activating Eye-Gaze mesh tracking vectors...", "working");
+                })
+                .catch(err => {
+                    console.error("Camera access failed", err);
+                    updateSystemStatus("Error: Camera Access Denied", "critical");
+                    document.getElementById('loading-overlay').innerHTML = `
+                        <div class="p-6 text-center max-w-sm">
+                            <svg class="w-12 h-12 text-red-500 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                            <h4 class="text-base font-bold text-slate-200 mb-1">Webcam Unaccessible</h4>
+                            <p class="text-xs text-slate-400 mb-4">The application requires webcam access to compute pupil coordinate positions inside eye landmarks.</p>
+                            <button onclick="window.location.reload()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold rounded-lg text-white">Retry Permissions</button>
+                        </div>
+                    `;
+                });
+        };
+    </script>
+</body>
+</html>
